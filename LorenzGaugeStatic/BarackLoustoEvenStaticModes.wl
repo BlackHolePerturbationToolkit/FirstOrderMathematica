@@ -1,9 +1,10 @@
 (* ::Package:: *)
 
-(*r0=70/10;
+(*r0=7.0;
 lminret=2;
 lmaxret=10;
-gridFile="h1Lorenz/input/radial_grid_r"<>ToString[r0(*N[r0]*)]<>".h5";*)
+gridFile="h1Lorenz/input/radial_grid_r"<>ToString[r0(*N[r0]*)]<>".h5";
+dataDir=FileNameJoin[{"data","h1","r0_"<>r0S[r0],"EvenStatic","h1ret"}];*)
 
 
 Print["Computing even static modes:
@@ -16,14 +17,12 @@ grid="<>gridFile];
 r0S[r0_]:=ToString[NumberForm[N[r0],{\[Infinity],1}]];
 
 
-dataDir=FileNameJoin[{"data","r0_"<>r0S[r0],"h1","EvenStatic","h1ret"}];
-
-
-If[!NumericQ[r0],Print["Numeric value for r0 not provided"]];
-If[!(IntegerQ[lminret]&&EvenQ[lminret]),Print["Invalid value for lminret. Must be an even integer."]];
-If[!(IntegerQ[lmaxret]&&EvenQ[lmaxret]),Print["Invalid value for lmaxret. Must be an even integer."]];
-If[!FileExistsQ[gridFile],"Input grid file does not exist."];
-If[Import[gridFile]!={"/ImportantIndexes","/r"},"Input grid file is not in expected format."];
+If[!NumericQ[r0],Print["Numeric value for r0 not provided"]; Abort[];];
+If[!(IntegerQ[lminret]&&EvenQ[lminret]),Print["Invalid value for lminret. Must be an even integer."]; Abort[];];
+If[!(IntegerQ[lmaxret]&&EvenQ[lmaxret]),Print["Invalid value for lmaxret. Must be an even integer."]; Abort[];];
+If[!FileExistsQ[gridFile],Print["Input grid file does not exist."]; Abort[];];
+If[Import[gridFile]!={"/ImportantIndexes","/r"},Print["Input grid file is not in expected format."]; Abort[];];
+If[!DirectoryQ[dataDir], CreateDirectory[dataDir,CreateIntermediateDirectories->True]];
 
 
 (* ::Section::Closed:: *)
@@ -167,9 +166,10 @@ h7\[Infinity][l_,r_]:=2r (l-1) l(l+1)(l+2) G\[Infinity][l,r];
 
 
 M=1;
-f0=1-2M/r0;
-\[CapitalOmega]\[Phi]=Sqrt[r0^-3];
-E0=f0 (1-3/r0)^(-1/2);
+r0r = Rationalize[r0];
+f0=1-2M/r0r;
+\[CapitalOmega]\[Phi]=Sqrt[r0r^-3];
+E0=f0 (1-3/r0r)^(-1/2);
 
 
 LaunchKernels[];
@@ -178,12 +178,12 @@ SetSharedFunction[\[CapitalPhi]0, \[CapitalPhi]0inv, h1Left, h1Right, h3Left, h3
 
 ParallelDo[
 Print["Computing \[CapitalPhi]0["<>ToString[l]<>"]"];
-\[CapitalPhi]0[l]=Simplify[{Join[-Table[Coefficient[h1H[l,r],C[i]],{i,1,3}],Table[Coefficient[h1\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[Coefficient[h3H[l,r],C[i]],{i,1,3}],Table[Coefficient[h3\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[Coefficient[h5H[l,r],C[i]],{i,1,3}],Table[Coefficient[h5\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[D[Coefficient[h1H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h1\[Infinity][l,r],C[i]],r],{i,4,6}]],Join[-Table[D[Coefficient[h3H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h3\[Infinity][l,r],C[i]],r],{i,4,6}]],Join[-Table[D[Coefficient[h5H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h5\[Infinity][l,r],C[i]],r],{i,4,6}]]}/.r->r0];
+\[CapitalPhi]0[l]=Simplify[{Join[-Table[Coefficient[h1H[l,r],C[i]],{i,1,3}],Table[Coefficient[h1\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[Coefficient[h3H[l,r],C[i]],{i,1,3}],Table[Coefficient[h3\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[Coefficient[h5H[l,r],C[i]],{i,1,3}],Table[Coefficient[h5\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[D[Coefficient[h1H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h1\[Infinity][l,r],C[i]],r],{i,4,6}]],Join[-Table[D[Coefficient[h3H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h3\[Infinity][l,r],C[i]],r],{i,4,6}]],Join[-Table[D[Coefficient[h5H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h5\[Infinity][l,r],C[i]],r],{i,4,6}]]}/.r->r0r];
 \[CapitalPhi]0inv[l]=Simplify[Inverse[\[CapitalPhi]0[l]]];,{l,lminret,lmaxret,2},Method->"FinestGrained"]
 
 
 Do[
-J1=-((16\[Pi] E0)/r0)SphericalHarmonicY[l,0,\[Pi]/2,0];
+J1=-((16\[Pi] E0)/r0r)SphericalHarmonicY[l,0,\[Pi]/2,0];
 J3=J1/f0;
 J5=0;
 source0={0,0,0,J1,J3,J5};
