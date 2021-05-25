@@ -4,6 +4,7 @@
 lminret=2;
 lmaxret=10;
 gridFile="h1Lorenz/input/radial_grid_r"<>ToString[r0(*N[r0]*)]<>".h5";
+r0S[r0_]:=ToString[NumberForm[N[r0],{\[Infinity],1}]];
 dataDir=FileNameJoin[{"data","h1","r0_"<>r0S[r0],"EvenStatic","h1ret"}];*)
 
 
@@ -11,10 +12,8 @@ Print["Computing even static modes:
 r0="<>ToString[r0]<>"
 lmin="<>ToString[lminret]<>"
 lmax="<>ToString[lmaxret]<>"
-grid="<>gridFile];
-
-
-r0S[r0_]:=ToString[NumberForm[N[r0],{\[Infinity],1}]];
+grid="<>gridFile<>"
+dataDir="<>dataDir];
 
 
 If[!NumericQ[r0],Print["Numeric value for r0 not provided"]; Abort[];];
