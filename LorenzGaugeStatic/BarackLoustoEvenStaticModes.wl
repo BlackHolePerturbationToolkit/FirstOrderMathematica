@@ -20,7 +20,7 @@ If[!NumericQ[r0],Print["Numeric value for r0 not provided"]; Abort[];];
 If[!(IntegerQ[lminret]&&EvenQ[lminret]),Print["Invalid value for lminret. Must be an even integer."]; Abort[];];
 If[!(IntegerQ[lmaxret]&&EvenQ[lmaxret]),Print["Invalid value for lmaxret. Must be an even integer."]; Abort[];];
 If[!FileExistsQ[gridFile],Print["Input grid file does not exist."]; Abort[];];
-If[Import[gridFile]!={"/ImportantIndexes","/r"},Print["Input grid file is not in expected format."]; Abort[];];
+If[Sort[Import[gridFile]]!={"/ImportantIndexes","/r"},Print["Input grid file is not in expected format."]; Abort[];];
 If[!DirectoryQ[dataDir], CreateDirectory[dataDir,CreateIntermediateDirectories->True]];
 
 
