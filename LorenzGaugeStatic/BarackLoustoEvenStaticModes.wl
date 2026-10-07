@@ -257,6 +257,20 @@ ddhretRight[i_,l_,m_]:=ddhstatic[i,l,m][[r0i+1;;]](*/._[___,Right,___]\[Rule]0*)
 CreateDirectory[dataDir,CreateIntermediateDirectories->True];
 
 
+(* Expansion about the horizon of each field, h(r) = sum_n c_n (r - 2M)^n (static, so no phase
+   factor), from the closed forms inside the orbit: dataset "horizon" with row n and the real and
+   imaginary parts of each field in the order of inhom_left (as written by h1Lorenz). *)
+horizonTerms=12;
+SetSharedFunction[horizonTable];
+ParallelDo[
+horizonTable[l]=Module[{x,cs},
+cs=Table[If[MemberQ[{2,4},i],ConstantArray[0,horizonTerms],
+PadRight[CoefficientList[Normal[Series[Symbol["h"<>ToString[i]<>"Left"][l]/.r->2+x,{x,0,horizonTerms-1}]],x],horizonTerms]],{i,{1,3,5,6,7,2,4}}];
+cs=N[N[cs,40]];
+Transpose[Flatten[Table[{Re[cs[[k]]],Im[cs[[k]]]},{k,Length[cs]}],1]]];
+,{l,lminret,lmaxret,2},Method->"FinestGrained"];
+
+
 Do[
 Export[FileNameJoin[{dataDir,"h1-l"<>ToString[l]<>"m"<>ToString[m]<>".h5"}],{Transpose[{
 Re[hretLeft[1,l,m]],Im[hretLeft[1,l,m]],Re[dhretLeft[1,l,m]],Im[dhretLeft[1,l,m]],Re[ddhretLeft[1,l,m]],Im[ddhretLeft[1,l,m]],
@@ -272,5 +286,5 @@ Re[hretRight[5,l,m]],Im[hretRight[5,l,m]],Re[dhretRight[5,l,m]],Im[dhretRight[5,
 Re[hretRight[6,l,m]],Im[hretRight[6,l,m]],Re[dhretRight[6,l,m]],Im[dhretRight[6,l,m]],Re[ddhretRight[6,l,m]],Im[ddhretRight[6,l,m]],
 Re[hretRight[7,l,m]],Im[hretRight[7,l,m]],Re[dhretRight[7,l,m]],Im[dhretRight[7,l,m]],Re[ddhretRight[7,l,m]],Im[ddhretRight[7,l,m]],
 Re[hretRight[2,l,m]],Im[hretRight[2,l,m]],Re[dhretRight[2,l,m]],Im[dhretRight[2,l,m]],Re[ddhretRight[2,l,m]],Im[ddhretRight[2,l,m]],
-Re[hretRight[4,l,m]],Im[hretRight[4,l,m]],Re[dhretRight[4,l,m]],Im[dhretRight[4,l,m]],Re[ddhretRight[4,l,m]],Im[ddhretRight[4,l,m]]}],grid},
-{"Datasets",{"inhom_left","inhom_right","grid"}}];,{l,lminret,lmaxret,2},{m,{0}}];
+Re[hretRight[4,l,m]],Im[hretRight[4,l,m]],Re[dhretRight[4,l,m]],Im[dhretRight[4,l,m]],Re[ddhretRight[4,l,m]],Im[ddhretRight[4,l,m]]}],grid,horizonTable[l]},
+{"Datasets",{"inhom_left","inhom_right","grid","horizon"}}];,{l,lminret,lmaxret,2},{m,{0}}];
