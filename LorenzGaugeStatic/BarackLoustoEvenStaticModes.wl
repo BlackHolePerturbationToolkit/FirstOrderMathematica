@@ -271,6 +271,21 @@ Transpose[Flatten[Table[{Re[cs[[k]]],Im[cs[[k]]]},{k,Length[cs]}],1]]];
 ,{l,lminret,lmaxret,2},Method->"FinestGrained"];
 
 
+(* Expansion at infinity of each field, h(r) = sum_n (b_n + c_n log r)/r^n, from the closed forms
+   outside the orbit: datasets "infinity" (b_n) and "infinity_log" (c_n), row n, Re/Im of each
+   field in the order of inhom_right (as written by h1Lorenz). *)
+SetSharedFunction[infinityTable];
+ParallelDo[
+infinityTable[l]=Module[{y,Lr,cs,s},
+cs=Table[If[MemberQ[{2,4},i],ConstantArray[{0,0},horizonTerms],
+s=Normal[Series[Symbol["h"<>ToString[i]<>"Right"][l]/.r->1/y,{y,0,horizonTerms-1}]]/.Log[y]->-Lr;
+If[!FreeQ[s,y^_?Negative]||!FreeQ[s,Log[y]],Print["unexpected terms in the expansion at infinity of h",i,"[",l,"]"]];
+Table[{Coefficient[s,y,n]/.Lr->0,Coefficient[Coefficient[s,y,n],Lr]},{n,0,horizonTerms-1}]],{i,{1,3,5,6,7,2,4}}];
+cs=N[N[cs,40]];
+Table[Transpose[Flatten[Table[{Re[cs[[k,All,part]]],Im[cs[[k,All,part]]]},{k,Length[cs]}],1]],{part,2}]];
+,{l,lminret,lmaxret,2},Method->"FinestGrained"];
+
+
 Do[
 Export[FileNameJoin[{dataDir,"h1-l"<>ToString[l]<>"m"<>ToString[m]<>".h5"}],{Transpose[{
 Re[hretLeft[1,l,m]],Im[hretLeft[1,l,m]],Re[dhretLeft[1,l,m]],Im[dhretLeft[1,l,m]],Re[ddhretLeft[1,l,m]],Im[ddhretLeft[1,l,m]],
@@ -286,5 +301,5 @@ Re[hretRight[5,l,m]],Im[hretRight[5,l,m]],Re[dhretRight[5,l,m]],Im[dhretRight[5,
 Re[hretRight[6,l,m]],Im[hretRight[6,l,m]],Re[dhretRight[6,l,m]],Im[dhretRight[6,l,m]],Re[ddhretRight[6,l,m]],Im[ddhretRight[6,l,m]],
 Re[hretRight[7,l,m]],Im[hretRight[7,l,m]],Re[dhretRight[7,l,m]],Im[dhretRight[7,l,m]],Re[ddhretRight[7,l,m]],Im[ddhretRight[7,l,m]],
 Re[hretRight[2,l,m]],Im[hretRight[2,l,m]],Re[dhretRight[2,l,m]],Im[dhretRight[2,l,m]],Re[ddhretRight[2,l,m]],Im[ddhretRight[2,l,m]],
-Re[hretRight[4,l,m]],Im[hretRight[4,l,m]],Re[dhretRight[4,l,m]],Im[dhretRight[4,l,m]],Re[ddhretRight[4,l,m]],Im[ddhretRight[4,l,m]]}],grid,horizonTable[l]},
-{"Datasets",{"inhom_left","inhom_right","grid","horizon"}}];,{l,lminret,lmaxret,2},{m,{0}}];
+Re[hretRight[4,l,m]],Im[hretRight[4,l,m]],Re[dhretRight[4,l,m]],Im[dhretRight[4,l,m]],Re[ddhretRight[4,l,m]],Im[ddhretRight[4,l,m]]}],grid,horizonTable[l],infinityTable[l][[1]],infinityTable[l][[2]]},
+{"Datasets",{"inhom_left","inhom_right","grid","horizon","infinity","infinity_log"}}];,{l,lminret,lmaxret,2},{m,{0}}];
