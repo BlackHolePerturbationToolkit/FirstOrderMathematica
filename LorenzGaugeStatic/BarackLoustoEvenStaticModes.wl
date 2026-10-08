@@ -172,7 +172,7 @@ E0=f0 (1-3/r0r)^(-1/2);
 
 
 LaunchKernels[];
-SetSharedFunction[\[CapitalPhi]0, \[CapitalPhi]0inv, h1Left, h1Right, h3Left, h3Right, h5Left, h5Right, h6Left, h6Right, h7Left, h7Right, hstatic, dhstatic, ddhstatic];
+SetSharedFunction[\[CapitalPhi]0, \[CapitalPhi]0inv, h1Left, h1Right, h3Left, h3Right, h5Left, h5Right, h6Left, h6Right, h7Left, h7Right];
 
 
 ParallelDo[
@@ -209,40 +209,35 @@ grid=Rationalize[Import[gridFile,{"Datasets","r"}],10^-10];
 r0i=Import[gridFile,{"Datasets","ImportantIndexes"}][[2]];
 
 
-ClearAll[hstatic,dhstatic,ddhstatic]
+(* Second radial derivatives are optional: they follow from the field equations (and the h1S code of
+   the second-order pipeline computes them there), so outputSecondDerivatives=False saves a third of the
+   evaluation and writes 4 columns per field (h, dh) instead of 6 (h, dh, ddh). *)
+If[!BooleanQ[outputSecondDerivatives],outputSecondDerivatives=True];
 
 
-hstatic[i_Integer,l_,0] := hstatic[i,l,0] =
-    Join[ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[Symbol["h"<>ToString[i]<>"Left"][l],60]]],{r,grid[[;;r0i]]}],
-         ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[Symbol["h"<>ToString[i]<>"Right"][l],60]]],{r,grid[[r0i;;]]}]];
-
-
-dhstatic[i_Integer,l_,0] := dhstatic[i,l,0] =
-    Join[ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Left"][l],r]/.r->R,60]]],{R,grid[[;;r0i]]}],
-         ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Right"][l],r]/.r->R,60]]],{R,grid[[r0i;;]]}]];
-
-
-ddhstatic[i_Integer,l_,0] := ddhstatic[i,l,0] =
-    Join[ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Left"][l],r,r]/.r->R,60]]],{R,grid[[;;r0i]]}],
-         ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Right"][l],r,r]/.r->R,60]]],{R,grid[[r0i;;]]}]];
-
-
-Do[Print["Computing hstatic["<>ToString[i]<>", "<>ToString[l]<>"]"];hstatic[i,l,0],{i,{1,3,5,6,7}},{l,lminret,lmaxret,2}]
-
-
-Do[Print["Computing dhstatic["<>ToString[i]<>", "<>ToString[l]<>"]"];dhstatic[i,l,0],{i,{1,3,5,6,7}},{l,lminret,lmaxret,2}]
-
-
-Do[Print["Computing ddhstatic["<>ToString[i]<>", "<>ToString[l]<>"]"];ddhstatic[i,l,0],{i,{1,3,5,6,7}},{l,lminret,lmaxret,2}]
+(* One parallel job per field and l: the closed form is fetched once from the master kernel, its
+   derivatives are taken once, and all grid points are evaluated locally on the subkernel. (Evaluating
+   points as separate parallel tasks through the shared functions sends the large expressions back
+   and forth for every point and dominated the run time.) The closed forms cancel strongly at high l
+   and large r, hence 60 digits with up to 2000 digits of extra precision. *)
+ClearAll[hstatic,dhstatic,ddhstatic];
+staticEval[ex_,pts_]:=Block[{$MaxExtraPrecision=2000},Table[N[N[ex/.r->R,60]],{R,pts}]];
+staticJob[i_,l_]:=Module[{exL=Symbol["h"<>ToString[i]<>"Left"][l],exR=Symbol["h"<>ToString[i]<>"Right"][l],nd=If[outputSecondDerivatives,2,1]},
+  Table[Join[staticEval[D[exL,{r,n}],grid[[;;r0i]]],staticEval[D[exR,{r,n}],grid[[r0i;;]]]],{n,0,nd}]];
+staticJobs=Reverse[Flatten[Table[{i,l},{l,lminret,lmaxret,2},{i,{1,3,5,6,7}}],1]];
+staticResults=ParallelMap[(Print["Computing static modes of h"<>ToString[#[[1]]]<>", l = "<>ToString[#[[2]]]];staticJob@@#)&,staticJobs,Method->"FinestGrained"];
+MapThread[(hstatic[#1[[1]],#1[[2]],0]=#2[[1]];dhstatic[#1[[1]],#1[[2]],0]=#2[[2]];
+  If[outputSecondDerivatives,ddhstatic[#1[[1]],#1[[2]],0]=#2[[3]]])&,{staticJobs,staticResults}];
+Clear[staticResults];
 
 
 Do[
-hstatic[2,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,2,0]]];
-hstatic[4,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,2,0]]];
-dhstatic[2,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,2,0]]];
-dhstatic[4,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,2,0]]];
-ddhstatic[2,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,2,0]]];
-ddhstatic[4,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,2,0]]];
+hstatic[2,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,lminret,0]]];
+hstatic[4,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,lminret,0]]];
+dhstatic[2,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,lminret,0]]];
+dhstatic[4,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,lminret,0]]];
+ddhstatic[2,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,lminret,0]]];
+ddhstatic[4,l,0]=ConstantArray[0.+0.I,Length[hstatic[1,lminret,0]]];
 ,{l,lminret,lmaxret}];
 
 
@@ -286,20 +281,8 @@ Table[Transpose[Flatten[Table[{Re[cs[[k,All,part]]],Im[cs[[k,All,part]]]},{k,Len
 ,{l,lminret,lmaxret,2},Method->"FinestGrained"];
 
 
+staticColumns[hs_,l_,m_]:=Flatten[Table[{Re[#],Im[#]}&/@If[outputSecondDerivatives,{hs[[1]][i,l,m],hs[[2]][i,l,m],hs[[3]][i,l,m]},{hs[[1]][i,l,m],hs[[2]][i,l,m]}],{i,{1,3,5,6,7,2,4}}],2];
 Do[
-Export[FileNameJoin[{dataDir,"h1-l"<>ToString[l]<>"m"<>ToString[m]<>".h5"}],{Transpose[{
-Re[hretLeft[1,l,m]],Im[hretLeft[1,l,m]],Re[dhretLeft[1,l,m]],Im[dhretLeft[1,l,m]],Re[ddhretLeft[1,l,m]],Im[ddhretLeft[1,l,m]],
-Re[hretLeft[3,l,m]],Im[hretLeft[3,l,m]],Re[dhretLeft[3,l,m]],Im[dhretLeft[3,l,m]],Re[ddhretLeft[3,l,m]],Im[ddhretLeft[3,l,m]],
-Re[hretLeft[5,l,m]],Im[hretLeft[5,l,m]],Re[dhretLeft[5,l,m]],Im[dhretLeft[5,l,m]],Re[ddhretLeft[5,l,m]],Im[ddhretLeft[5,l,m]],
-Re[hretLeft[6,l,m]],Im[hretLeft[6,l,m]],Re[dhretLeft[6,l,m]],Im[dhretLeft[6,l,m]],Re[ddhretLeft[6,l,m]],Im[ddhretLeft[6,l,m]],
-Re[hretLeft[7,l,m]],Im[hretLeft[7,l,m]],Re[dhretLeft[7,l,m]],Im[dhretLeft[7,l,m]],Re[ddhretLeft[7,l,m]],Im[ddhretLeft[7,l,m]],
-Re[hretLeft[2,l,m]],Im[hretLeft[2,l,m]],Re[dhretLeft[2,l,m]],Im[dhretLeft[2,l,m]],Re[ddhretLeft[2,l,m]],Im[ddhretLeft[2,l,m]],
-Re[hretLeft[4,l,m]],Im[hretLeft[4,l,m]],Re[dhretLeft[4,l,m]],Im[dhretLeft[4,l,m]],Re[ddhretLeft[4,l,m]],Im[ddhretLeft[4,l,m]]}],Transpose[{
-Re[hretRight[1,l,m]],Im[hretRight[1,l,m]],Re[dhretRight[1,l,m]],Im[dhretRight[1,l,m]],Re[ddhretRight[1,l,m]],Im[ddhretRight[1,l,m]],
-Re[hretRight[3,l,m]],Im[hretRight[3,l,m]],Re[dhretRight[3,l,m]],Im[dhretRight[3,l,m]],Re[ddhretRight[3,l,m]],Im[ddhretRight[3,l,m]],
-Re[hretRight[5,l,m]],Im[hretRight[5,l,m]],Re[dhretRight[5,l,m]],Im[dhretRight[5,l,m]],Re[ddhretRight[5,l,m]],Im[ddhretRight[5,l,m]],
-Re[hretRight[6,l,m]],Im[hretRight[6,l,m]],Re[dhretRight[6,l,m]],Im[dhretRight[6,l,m]],Re[ddhretRight[6,l,m]],Im[ddhretRight[6,l,m]],
-Re[hretRight[7,l,m]],Im[hretRight[7,l,m]],Re[dhretRight[7,l,m]],Im[dhretRight[7,l,m]],Re[ddhretRight[7,l,m]],Im[ddhretRight[7,l,m]],
-Re[hretRight[2,l,m]],Im[hretRight[2,l,m]],Re[dhretRight[2,l,m]],Im[dhretRight[2,l,m]],Re[ddhretRight[2,l,m]],Im[ddhretRight[2,l,m]],
-Re[hretRight[4,l,m]],Im[hretRight[4,l,m]],Re[dhretRight[4,l,m]],Im[dhretRight[4,l,m]],Re[ddhretRight[4,l,m]],Im[ddhretRight[4,l,m]]}],grid,horizonTable[l],infinityTable[l][[1]],infinityTable[l][[2]]},
+Export[FileNameJoin[{dataDir,"h1-l"<>ToString[l]<>"m"<>ToString[m]<>".h5"}],{Transpose[staticColumns[{hretLeft,dhretLeft,ddhretLeft},l,m]],
+Transpose[staticColumns[{hretRight,dhretRight,ddhretRight},l,m]],grid,horizonTable[l],infinityTable[l][[1]],infinityTable[l][[2]]},
 {"Datasets",{"inhom_left","inhom_right","grid","horizon","infinity","infinity_log"}}];,{l,lminret,lmaxret,2},{m,{0}}];
