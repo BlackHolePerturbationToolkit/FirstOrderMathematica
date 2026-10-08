@@ -213,18 +213,18 @@ ClearAll[hstatic,dhstatic,ddhstatic]
 
 
 hstatic[i_Integer,l_,0] := hstatic[i,l,0] =
-    Join[ParallelTable[N[N[Symbol["h"<>ToString[i]<>"Left"][l],60]],{r,grid[[;;r0i]]}],
-         ParallelTable[N[N[Symbol["h"<>ToString[i]<>"Right"][l],60]],{r,grid[[r0i;;]]}]];
+    Join[ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[Symbol["h"<>ToString[i]<>"Left"][l],60]]],{r,grid[[;;r0i]]}],
+         ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[Symbol["h"<>ToString[i]<>"Right"][l],60]]],{r,grid[[r0i;;]]}]];
 
 
 dhstatic[i_Integer,l_,0] := dhstatic[i,l,0] =
-    Join[ParallelTable[N[N[D[Symbol["h"<>ToString[i]<>"Left"][l],r]/.r->R,60]],{R,grid[[;;r0i]]}],
-         ParallelTable[N[N[D[Symbol["h"<>ToString[i]<>"Right"][l],r]/.r->R,60]],{R,grid[[r0i;;]]}]];
+    Join[ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Left"][l],r]/.r->R,60]]],{R,grid[[;;r0i]]}],
+         ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Right"][l],r]/.r->R,60]]],{R,grid[[r0i;;]]}]];
 
 
 ddhstatic[i_Integer,l_,0] := ddhstatic[i,l,0] =
-    Join[ParallelTable[N[N[D[Symbol["h"<>ToString[i]<>"Left"][l],r,r]/.r->R,60]],{R,grid[[;;r0i]]}],
-         ParallelTable[N[N[D[Symbol["h"<>ToString[i]<>"Right"][l],r,r]/.r->R,60]],{R,grid[[r0i;;]]}]];
+    Join[ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Left"][l],r,r]/.r->R,60]]],{R,grid[[;;r0i]]}],
+         ParallelTable[Block[{$MaxExtraPrecision=2000},N[N[D[Symbol["h"<>ToString[i]<>"Right"][l],r,r]/.r->R,60]]],{R,grid[[r0i;;]]}]];
 
 
 Do[Print["Computing hstatic["<>ToString[i]<>", "<>ToString[l]<>"]"];hstatic[i,l,0],{i,{1,3,5,6,7}},{l,lminret,lmaxret,2}]
