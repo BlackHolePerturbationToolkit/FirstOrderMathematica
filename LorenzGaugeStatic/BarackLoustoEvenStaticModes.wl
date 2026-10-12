@@ -172,13 +172,17 @@ E0=f0 (1-3/r0r)^(-1/2);
 
 
 LaunchKernels[];
+(* timing of each phase (master) and of each parallel job (subkernels), for profiling *)
+phaseT0=AbsoluteTime[]; phase[name_]:=(Print["phase ",name,": ",Round[AbsoluteTime[]-phaseT0,0.1]," s"]; phaseT0=AbsoluteTime[]);
 SetSharedFunction[\[CapitalPhi]0, \[CapitalPhi]0inv, h1Left, h1Right, h3Left, h3Right, h5Left, h5Right, h6Left, h6Right, h7Left, h7Right];
 
 
 ParallelDo[
 Print["Computing \[CapitalPhi]0["<>ToString[l]<>"]"];
+With[{t0=AbsoluteTime[]},
 \[CapitalPhi]0[l]=Simplify[{Join[-Table[Coefficient[h1H[l,r],C[i]],{i,1,3}],Table[Coefficient[h1\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[Coefficient[h3H[l,r],C[i]],{i,1,3}],Table[Coefficient[h3\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[Coefficient[h5H[l,r],C[i]],{i,1,3}],Table[Coefficient[h5\[Infinity][l,r],C[i]],{i,4,6}]],Join[-Table[D[Coefficient[h1H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h1\[Infinity][l,r],C[i]],r],{i,4,6}]],Join[-Table[D[Coefficient[h3H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h3\[Infinity][l,r],C[i]],r],{i,4,6}]],Join[-Table[D[Coefficient[h5H[l,r],C[i]],r],{i,1,3}],Table[D[Coefficient[h5\[Infinity][l,r],C[i]],r],{i,4,6}]]}/.r->r0r];
-\[CapitalPhi]0inv[l]=Simplify[Inverse[\[CapitalPhi]0[l]]];,{l,lminret,lmaxret,2},Method->"FinestGrained"]
+\[CapitalPhi]0inv[l]=Simplify[Inverse[\[CapitalPhi]0[l]]]; Print["  Phi0[",l,"]: ",Round[AbsoluteTime[]-t0,0.1]," s"]];,{l,lminret,lmaxret,2},Method->"FinestGrained"];
+phase["Phi0"]
 
 
 Do[
@@ -187,11 +191,13 @@ J3=J1/f0;
 J5=0;
 source0={0,0,0,J1,J3,J5};
 c[l]=\[CapitalPhi]0inv[l] . source0;,
-{l,lminret,lmaxret,2}]
+{l,lminret,lmaxret,2}];
+phase["constants"]
 
 
 ParallelDo[
 Print["Computing h1["<>ToString[l]<>"]"];
+With[{t0=AbsoluteTime[]},
 h1Left[l]=Simplify[h1H[l,r]/.{M->1,C[i_]:>c[l][[i]]}];
 h1Right[l]=Simplify[h1\[Infinity][l,r]/.{M->1,C[i_]:>c[l][[i]]}];
 h3Left[l]=Simplify[h3H[l,r]/.{M->1,C[i_]:>c[l][[i]]}];
@@ -201,8 +207,9 @@ h5Right[l]=Simplify[h5\[Infinity][l,r]/.{M->1,C[i_]:>c[l][[i]]}];
 h6Left[l]=Simplify[h6H[l,r]/.{M->1,C[i_]:>c[l][[i]]}];
 h6Right[l]=Simplify[h6\[Infinity][l,r]/.{M->1,C[i_]:>c[l][[i]]}];
 h7Left[l]=Simplify[h7H[l,r]/.{M->1,C[i_]:>c[l][[i]]}];
-h7Right[l]=Simplify[h7\[Infinity][l,r]/.{M->1,C[i_]:>c[l][[i]]}];
+h7Right[l]=Simplify[h7\[Infinity][l,r]/.{M->1,C[i_]:>c[l][[i]]}]; Print["  closed forms l = ",l,": ",Round[AbsoluteTime[]-t0,0.1]," s"]];
 ,{l,lminret,lmaxret,2},Method->"FinestGrained"];
+phase["closed forms"]
 
 
 grid=Rationalize[Import[gridFile,{"Datasets","r"}],10^-10];
@@ -221,14 +228,40 @@ If[!BooleanQ[outputSecondDerivatives],outputSecondDerivatives=True];
    and forth for every point and dominated the run time.) The closed forms cancel strongly at high l
    and large r, hence 60 digits with up to 2000 digits of extra precision. *)
 ClearAll[hstatic,dhstatic,ddhstatic];
-staticEval[ex_,pts_]:=Block[{$MaxExtraPrecision=2000},Table[N[N[ex/.r->R,60]],{R,pts}]];
-staticJob[i_,l_]:=Module[{exL=Symbol["h"<>ToString[i]<>"Left"][l],exR=Symbol["h"<>ToString[i]<>"Right"][l],nd=If[outputSecondDerivatives,2,1]},
-  Table[Join[staticEval[D[exL,{r,n}],grid[[;;r0i]]],staticEval[D[exR,{r,n}],grid[[r0i;;]]]],{n,0,nd}]];
+(* Each closed form is numericised once at working precision wp (its exact rationals and surds would make the
+   point-by-point evaluation several hundred times slower) and evaluated on blocks of consecutive grid points as
+   arrays. The closed forms cancel strongly (outside the orbit a solution decaying like r^-(l+1) is the difference of
+   much larger terms: hundreds of digits at the outer grid points), and the precision needed varies smoothly along the
+   grid, so each block starts at the precision the previous block ended with; points where precision tracking reports
+   fewer than 18 digits (or, for values that cancel to ~0, an accuracy below 40) are redone at twice the precision
+   (staticEvalExact, the original point-by-point evaluation, beyond 8192 digits). *)
+staticEvalExact[ex_,pts_]:=Block[{$MaxExtraPrecision=2000},Table[N[N[ex/.r->R,60]],{R,pts}]];
+staticEval[ex_,pts_]:=Module[{wp0=60,out=ConstantArray[0.,Length[pts]],fs=<||>,f,blocks},
+  (* numericised closed form at each working precision; substituted with /. (inserting ex into Function[{r}, ...]
+     would rename the bound r and leave the closed form unevaluated) *)
+  f[wp_]:=If[KeyExistsQ[fs,wp],fs[wp],fs[wp]=N[ex,wp+10]];
+  blocks=Partition[Range[Length[pts]],UpTo[200]];
+  Do[Module[{idx=blk,wp=wp0,v,ok},
+      While[idx=!={}&&wp<=8192,
+        v=f[wp]/.r->SetPrecision[pts[[idx]],wp+10];
+        If[!ListQ[v],v=ConstantArray[v,Length[idx]]];
+        ok=Map[NumericQ[#]&&(Precision[#]>=18||Accuracy[#]>=40)&,v];
+        out[[Pick[idx,ok]]]=N[Pick[v,ok]];
+        idx=Pick[idx,ok,False];If[idx=!={},wp*=2]];
+      If[idx=!={},out[[idx]]=staticEvalExact[ex,pts[[idx]]]];
+      wp0=wp],
+    {blk,blocks}];
+  out];
+staticJob[i_,l_]:=Module[{t0=AbsoluteTime[],exL=Symbol["h"<>ToString[i]<>"Left"][l],exR=Symbol["h"<>ToString[i]<>"Right"][l],nd=If[outputSecondDerivatives,2,1],t1,res},
+  t1=AbsoluteTime[];
+  res=Table[Join[staticEval[D[exL,{r,n}],grid[[;;r0i]]],staticEval[D[exR,{r,n}],grid[[r0i;;]]]],{n,0,nd}];
+  Print["  grid h",i,"[",l,"]: fetch ",Round[t1-t0,0.1]," s, evaluate ",Round[AbsoluteTime[]-t1,0.1]," s"]; res];
 staticJobs=Reverse[Flatten[Table[{i,l},{l,lminret,lmaxret,2},{i,{1,3,5,6,7}}],1]];
 staticResults=ParallelMap[(Print["Computing static modes of h"<>ToString[#[[1]]]<>", l = "<>ToString[#[[2]]]];staticJob@@#)&,staticJobs,Method->"FinestGrained"];
 MapThread[(hstatic[#1[[1]],#1[[2]],0]=#2[[1]];dhstatic[#1[[1]],#1[[2]],0]=#2[[2]];
   If[outputSecondDerivatives,ddhstatic[#1[[1]],#1[[2]],0]=#2[[3]]])&,{staticJobs,staticResults}];
 Clear[staticResults];
+phase["grid evaluation"]
 
 
 Do[
@@ -258,12 +291,13 @@ CreateDirectory[dataDir,CreateIntermediateDirectories->True];
 horizonTerms=12;
 SetSharedFunction[horizonTable];
 ParallelDo[
-horizonTable[l]=Module[{x,cs},
+horizonTable[l]=Module[{x,cs,t0=AbsoluteTime[]},
 cs=Table[If[MemberQ[{2,4},i],ConstantArray[0,horizonTerms],
 PadRight[CoefficientList[Normal[Series[Symbol["h"<>ToString[i]<>"Left"][l]/.r->2+x,{x,0,horizonTerms-1}]],x],horizonTerms]],{i,{1,3,5,6,7,2,4}}];
-cs=N[N[cs,40]];
+cs=N[N[cs,40]]; Print["  horizon series l = ",l,": ",Round[AbsoluteTime[]-t0,0.1]," s"];
 Transpose[Flatten[Table[{Re[cs[[k]]],Im[cs[[k]]]},{k,Length[cs]}],1]]];
 ,{l,lminret,lmaxret,2},Method->"FinestGrained"];
+phase["horizon series"]
 
 
 (* Expansion at infinity of each field, h(r) = sum_n (b_n + c_n log r)/r^n, from the closed forms
@@ -271,14 +305,15 @@ Transpose[Flatten[Table[{Re[cs[[k]]],Im[cs[[k]]]},{k,Length[cs]}],1]]];
    field in the order of inhom_right (as written by h1Lorenz). *)
 SetSharedFunction[infinityTable];
 ParallelDo[
-infinityTable[l]=Module[{y,Lr,cs,s},
+infinityTable[l]=Module[{y,Lr,cs,s,t0=AbsoluteTime[]},
 cs=Table[If[MemberQ[{2,4},i],ConstantArray[{0,0},horizonTerms],
 s=Normal[Series[Symbol["h"<>ToString[i]<>"Right"][l]/.r->1/y,{y,0,horizonTerms-1}]]/.Log[y]->-Lr;
 If[!FreeQ[s,y^_?Negative]||!FreeQ[s,Log[y]],Print["unexpected terms in the expansion at infinity of h",i,"[",l,"]"]];
 Table[{Coefficient[s,y,n]/.Lr->0,Coefficient[Coefficient[s,y,n],Lr]},{n,0,horizonTerms-1}]],{i,{1,3,5,6,7,2,4}}];
-cs=N[N[cs,40]];
+cs=N[N[cs,40]]; Print["  infinity series l = ",l,": ",Round[AbsoluteTime[]-t0,0.1]," s"];
 Table[Transpose[Flatten[Table[{Re[cs[[k,All,part]]],Im[cs[[k,All,part]]]},{k,Length[cs]}],1]],{part,2}]];
 ,{l,lminret,lmaxret,2},Method->"FinestGrained"];
+phase["infinity series"]
 
 
 staticColumns[hs_,l_,m_]:=Flatten[Table[{Re[#],Im[#]}&/@If[outputSecondDerivatives,{hs[[1]][i,l,m],hs[[2]][i,l,m],hs[[3]][i,l,m]},{hs[[1]][i,l,m],hs[[2]][i,l,m]}],{i,{1,3,5,6,7,2,4}}],2];
@@ -286,3 +321,4 @@ Do[
 Export[FileNameJoin[{dataDir,"h1-l"<>ToString[l]<>"m"<>ToString[m]<>".h5"}],{Transpose[staticColumns[{hretLeft,dhretLeft,ddhretLeft},l,m]],
 Transpose[staticColumns[{hretRight,dhretRight,ddhretRight},l,m]],grid,horizonTable[l],infinityTable[l][[1]],infinityTable[l][[2]]},
 {"Datasets",{"inhom_left","inhom_right","grid","horizon","infinity","infinity_log"}}];,{l,lminret,lmaxret,2},{m,{0}}];
+phase["export"]
